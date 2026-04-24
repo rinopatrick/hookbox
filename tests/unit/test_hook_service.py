@@ -74,7 +74,7 @@ async def test_capture_request(svc: HookService) -> None:
         content_type="application/json",
         source_ip="192.168.1.1",
     )
-    stored = await svc.capture_request(request_data)
+    stored, _hook = await svc.capture_request(request_data)
     assert stored["method"] == "POST"
     assert stored["path"] == "/webhook"
     assert stored["source_ip"] == "192.168.1.1"
@@ -133,7 +133,7 @@ async def test_delete_request(svc: HookService) -> None:
         content_type="",
         source_ip="",
     )
-    stored = await svc.capture_request(request_data)
+    stored, _hook = await svc.capture_request(request_data)
     await svc.delete_request(created.id, stored["id"])
     with pytest.raises(NotFoundError):
         await svc.get_request(created.id, stored["id"])

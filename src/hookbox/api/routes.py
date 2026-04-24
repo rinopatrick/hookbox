@@ -17,7 +17,11 @@ from fastapi.staticfiles import StaticFiles
 from hookbox.adapters.database import Database, RequestData
 from hookbox.api.websocket import manager as ws_manager, websocket_endpoint
 from hookbox.config import Settings
-from hookbox.domain.models import ReplayRequest, ReplayResponse  # noqa: TC001
+from hookbox.domain.models import (  # noqa: TC001
+    HookUpdateRequest,
+    ReplayRequest,
+    ReplayResponse,
+)
 from hookbox.exceptions import HookboxError, NotFoundError
 from hookbox.logging import get_logger, setup_logging
 from hookbox.services.cleanup import cleanup_task
@@ -100,6 +104,19 @@ async def create_hook(name: str | None = Query(default=None)) -> dict[str, Any]:
     """Create a new webhook endpoint and return its ID and URL."""
     result = await hook_service.create_hook(name)
     return result.model_dump()
+
+
+@app.get("/hook/{hook_id}/meta")
+async def get_hook_meta(hook_id: str) -> dict[str, Any]:
+    """Get hook metadata including response configuration."""
+    return await hook_service.get_hook(hook_id)
+
+
+@app.put("/hook/{hook_id}/config")
+async def update_hook(hook_id: str, payload: HookUpdateRequest) -> dict[str, Any]:
+    """Update hook metadata and response configuration."""
+    updates = payload.model_dump(exclude_unset=True, exclude_none=True)
+    return await hook_service.update_hook(hook_id, **updates)
 
 
 # ── WebSocket (must be registered before catch-all) ──────────────────
@@ -214,12 +231,23 @@ async def _capture_and_broadcast(request: Request, hook_id: str, path: str) -> R
         source_ip=request.client.host if request.client else "",
     )
 
-    stored = await hook_service.capture_request(request_data)
+    stored, hook = await hook_service.capture_request(request_data)
 
     event = {"type": "new_request", "data": stored}
     await ws_manager.broadcast(hook_id, event)
 
-    return Response(status_code=200, content="ok")
+    # Return custom response based on hook configuration
+    status = hook.get("response_status", 200)
+    body = hook.get("response_body", "ok") or "ok"
+    content_type = hook.get("response_content_type", "text/plain")
+    response_headers = hook.get("response_headers", {})
+
+    return Response(
+        status_code=status,
+        content=body,
+        media_type=content_type,
+        headers=response_headers,
+    )
 
 
 async def _read_body_limited(request: Request, max_size: int) -> tuple[bytes, bool]:

@@ -71,6 +71,21 @@ class HookService:
         """
         return await self._db.get_hook(hook_id)
 
+    async def update_hook(self, hook_id: str, **kwargs: Any) -> dict[str, Any]:
+        """Update hook metadata and response configuration.
+
+        Args:
+            hook_id: Hook identifier.
+            **kwargs: Fields to update.
+
+        Returns:
+            Updated hook data dictionary.
+
+        Raises:
+            NotFoundError: If hook does not exist.
+        """
+        return await self._db.update_hook(hook_id, **kwargs)
+
     async def delete_hook(self, hook_id: str) -> None:
         """Delete a hook and all its requests.
 
@@ -83,20 +98,23 @@ class HookService:
         await self._db.delete_hook(hook_id)
         logger.info("Deleted hook %s", hook_id)
 
-    async def capture_request(self, request_data: RequestData) -> dict[str, Any]:
+    async def capture_request(
+        self, request_data: RequestData
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Capture and store an incoming webhook request.
 
         Args:
             request_data: Structured request capture data.
 
         Returns:
-            Stored request data dictionary.
+            Tuple of (stored request data, hook config dictionary).
 
         Raises:
             NotFoundError: If hook does not exist.
         """
-        await self._db.get_hook(request_data.hook_id)
-        return await self._db.store_request(request_data)
+        hook = await self._db.get_hook(request_data.hook_id)
+        stored = await self._db.store_request(request_data)
+        return stored, hook
 
     async def get_requests(
         self,

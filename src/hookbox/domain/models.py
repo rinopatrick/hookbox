@@ -66,6 +66,26 @@ class HookCreateResponse(BaseModel):
     url: str = Field(description="Full webhook URL")
 
 
+class HookUpdateRequest(BaseModel):
+    """Payload for updating hook metadata and response configuration.
+
+    Attributes:
+        name: Optional human-readable name.
+        response_status: HTTP status code to return for this hook.
+        response_body: Body content to return.
+        response_content_type: Content-Type of the response.
+        response_headers: Custom response headers as key-value pairs.
+    """
+
+    name: str | None = Field(default=None, description="Human-readable name")
+    response_status: int = Field(default=200, ge=100, le=599, description="HTTP status code")
+    response_body: str = Field(default="", description="Response body content")
+    response_content_type: str = Field(default="text/plain", description="Response Content-Type")
+    response_headers: dict[str, str] = Field(
+        default_factory=dict, description="Custom response headers"
+    )
+
+
 class ReplayRequest(BaseModel):
     """Payload for replaying a captured request to a target URL.
 

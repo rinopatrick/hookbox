@@ -33,7 +33,7 @@ async function createHook() {
     }
 }
 
-function loadHook(hookId) {
+async function loadHook(hookId) {
     state.hookId = hookId;
     state.requests = [];
     state.selectedRequestId = null;
@@ -42,6 +42,21 @@ function loadHook(hookId) {
     $("#hookUrl").textContent = `${baseUrl}/hook/${hookId}`;
     $("#emptyState").classList.add("hidden");
     $("#hookView").classList.remove("hidden");
+
+    // Fetch hook metadata (response config)
+    try {
+        const metaResp = await fetch(`/hook/${hookId}/meta`);
+        if (metaResp.ok) {
+            const meta = await metaResp.json();
+            $("#respStatus").value = meta.response_status || 200;
+            $("#respContentType").value = meta.response_content_type || "text/plain";
+            $("#respBody").value = meta.response_body || "";
+            $("#respHeaders").value = JSON.stringify(meta.response_headers || {}, null, 2);
+            updateResponsePreview(meta.response_status, meta.response_content_type);
+        }
+    } catch (err) {
+        console.error("Failed to fetch hook metadata:", err);
+    }
 
     connectWs(hookId);
     fetchRequests(hookId);
@@ -339,6 +354,45 @@ async function deleteSelectedRequest() {
         updateRequestCount();
     } catch (err) {
         console.error("Failed to delete request:", err);
+    }
+}
+
+function toggleResponseConfig() {
+    $("#responseConfigForm").classList.toggle("hidden");
+    $("#responseConfigPreview").classList.toggle("hidden");
+}
+
+function updateResponsePreview(status, contentType) {
+    $("#responseConfigPreview").innerHTML = `Responds with <span style="color: var(--accent)">${status}</span> ${escapeHtml(contentType)}`;
+}
+
+async function saveResponseConfig() {
+    const status = parseInt($("#respStatus").value, 10) || 200;
+    const contentType = $("#respContentType").value || "text/plain";
+    const body = $("#respBody").value || "";
+    let headers = {};
+    try {
+        headers = JSON.parse($("#respHeaders").value || "{}");
+    } catch {
+        alert("Invalid JSON in headers");
+        return;
+    }
+
+    try {
+        await fetch(`/hook/${state.hookId}/config`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                response_status: status,
+                response_content_type: contentType,
+                response_body: body,
+                response_headers: headers,
+            }),
+        });
+        updateResponsePreview(status, contentType);
+        toggleResponseConfig();
+    } catch (err) {
+        console.error("Failed to save response config:", err);
     }
 }
 

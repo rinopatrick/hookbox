@@ -239,3 +239,71 @@ async def test_replay_nonexistent_request(client: AsyncClient) -> None:
         json={"target_url": "http://localhost:3000/webhook"},
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_hook_meta(client: AsyncClient) -> None:
+    """GET hook meta returns response config."""
+    create_resp = await client.post("/hook")
+    hook_id = create_resp.json()["id"]
+
+    resp = await client.get(f"/hook/{hook_id}/meta")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == hook_id
+    assert data["response_status"] == 200
+    assert data["response_content_type"] == "text/plain"
+
+
+@pytest.mark.asyncio
+async def test_update_hook_response_config(client: AsyncClient) -> None:
+    """PUT hook config updates response settings."""
+    create_resp = await client.post("/hook")
+    hook_id = create_resp.json()["id"]
+
+    resp = await client.put(
+        f"/hook/{hook_id}/config",
+        json={
+            "response_status": 418,
+            "response_body": '{"message": "I am a teapot"}',
+            "response_content_type": "application/json",
+            "response_headers": {"X-Custom": "test"},
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["response_status"] == 418
+    assert data["response_content_type"] == "application/json"
+    assert data["response_headers"]["X-Custom"] == "test"
+
+
+@pytest.mark.asyncio
+async def test_custom_hook_response(client: AsyncClient) -> None:
+    """Webhook catch-all returns custom response based on hook config."""
+    create_resp = await client.post("/hook")
+    hook_id = create_resp.json()["id"]
+
+    await client.put(
+        f"/hook/{hook_id}/config",
+        json={
+            "response_status": 201,
+            "response_body": '{"created": true}',
+            "response_content_type": "application/json",
+            "response_headers": {"X-Webhook": "processed"},
+        },
+    )
+
+    resp = await client.post(f"/hook/{hook_id}", json={"test": 1})
+    assert resp.status_code == 201
+    assert resp.json() == {"created": True}
+    assert resp.headers["x-webhook"] == "processed"
+
+
+@pytest.mark.asyncio
+async def test_update_nonexistent_hook(client: AsyncClient) -> None:
+    """Updating a non-existent hook returns 404."""
+    resp = await client.put(
+        "/hook/nonexistent123/config",
+        json={"response_status": 200},
+    )
+    assert resp.status_code == 404

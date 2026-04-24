@@ -159,6 +159,38 @@
                     <button class="text-xs px-3 py-1 rounded font-mono" style="background: #ef535022; color: var(--method-delete)" onclick="deleteHook()">Delete Hook</button>
                 </div>
 
+                <!-- Mock Response Config -->
+                <div class="mb-4 p-4 rounded-lg" style="background: var(--bg-surface); border: 1px solid var(--border)">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-semibold">Mock Response</span>
+                        <button class="text-xs px-2 py-1 rounded font-mono" style="background: var(--bg-elevated); color: var(--text-secondary)" onclick="toggleResponseConfig()">Edit</button>
+                    </div>
+                    <div id="responseConfigPreview" class="text-xs font-mono" style="color: var(--text-secondary)">
+                        Responds with <span style="color: var(--accent)">200</span> text/plain
+                    </div>
+                    <div id="responseConfigForm" class="hidden mt-3">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-xs font-mono" style="color: var(--text-secondary)">Status</label>
+                                <input type="number" id="respStatus" value="200" min="100" max="599" class="w-full mt-1 px-2 py-1 rounded text-sm font-mono bg-transparent border" style="border-color: var(--border); color: var(--text-primary)">
+                            </div>
+                            <div>
+                                <label class="text-xs font-mono" style="color: var(--text-secondary)">Content-Type</label>
+                                <input type="text" id="respContentType" value="text/plain" class="w-full mt-1 px-2 py-1 rounded text-sm font-mono bg-transparent border" style="border-color: var(--border); color: var(--text-primary)">
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <label class="text-xs font-mono" style="color: var(--text-secondary)">Body</label>
+                            <textarea id="respBody" rows="3" class="w-full mt-1 px-2 py-1 rounded text-sm font-mono bg-transparent border" style="border-color: var(--border); color: var(--text-primary)"></textarea>
+                        </div>
+                        <div class="mt-3">
+                            <label class="text-xs font-mono" style="color: var(--text-secondary)">Headers (JSON)</label>
+                            <textarea id="respHeaders" rows="2" class="w-full mt-1 px-2 py-1 rounded text-sm font-mono bg-transparent border" style="border-color: var(--border); color: var(--text-primary)">{}</textarea>
+                        </div>
+                        <button onclick="saveResponseConfig()" class="mt-3 px-4 py-2 rounded-lg font-semibold text-xs" style="background: var(--accent); color: var(--bg-primary)">Save</button>
+                    </div>
+                </div>
+
                 <!-- Split View -->
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" style="height: calc(100vh - 280px)">
                     <!-- Request List -->

@@ -36,7 +36,11 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS hooks (
     id TEXT PRIMARY KEY,
     name TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    response_status INTEGER DEFAULT 200,
+    response_body TEXT DEFAULT '',
+    response_content_type TEXT DEFAULT 'text/plain',
+    response_headers TEXT DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS webhook_requests (
@@ -79,8 +83,27 @@ class Database:
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.execute("PRAGMA foreign_keys=ON")
         await self._db.executescript(_SCHEMA)
+        await self._migrate_hooks()
         await self._db.commit()
         logger.info("Database initialized at %s", self._db_path)
+
+    async def _migrate_hooks(self) -> None:
+        """Add missing columns to hooks table for schema migrations."""
+        cursor = await self.db.execute("PRAGMA table_info(hooks)")
+        columns = {row[1] for row in await cursor.fetchall()}
+
+        migrations = [
+            ("response_status", "INTEGER DEFAULT 200"),
+            ("response_body", "TEXT DEFAULT ''"),
+            ("response_content_type", "TEXT DEFAULT 'text/plain'"),
+            ("response_headers", "TEXT DEFAULT '{}'"),
+        ]
+        for col_name, col_type in migrations:
+            if col_name not in columns:
+                await self.db.execute(
+                    f"ALTER TABLE hooks ADD COLUMN {col_name} {col_type}"
+                )
+                logger.info("Migrated hooks table: added column %s", col_name)
 
     async def close(self) -> None:
         """Close the database connection."""
@@ -123,20 +146,67 @@ class Database:
             hook_id: Hook identifier.
 
         Returns:
-            Dictionary with hook data.
+            Dictionary with hook data including response config.
 
         Raises:
             NotFoundError: If hook does not exist.
         """
         cursor = await self.db.execute(
-            "SELECT id, name, created_at FROM hooks WHERE id = ?",
+            """SELECT id, name, created_at, response_status, response_body,
+                      response_content_type, response_headers
+               FROM hooks WHERE id = ?""",
             (hook_id,),
         )
         row = await cursor.fetchone()
         if row is None:
             msg = f"Hook '{hook_id}' not found"
             raise NotFoundError(msg)
-        return {"id": row[0], "name": row[1], "created_at": row[2]}
+        return {
+            "id": row[0],
+            "name": row[1],
+            "created_at": row[2],
+            "response_status": row[3],
+            "response_body": row[4],
+            "response_content_type": row[5],
+            "response_headers": json.loads(row[6]) if row[6] else {},
+        }
+
+    async def update_hook(self, hook_id: str, **kwargs: Any) -> dict[str, Any]:
+        """Update hook metadata and response configuration.
+
+        Args:
+            hook_id: Hook identifier.
+            **kwargs: Fields to update (name, response_status, response_body,
+                     response_content_type, response_headers).
+
+        Returns:
+            Updated hook data dictionary.
+
+        Raises:
+            NotFoundError: If hook does not exist.
+        """
+        await self.get_hook(hook_id)
+        allowed = {
+            "name",
+            "response_status",
+            "response_body",
+            "response_content_type",
+            "response_headers",
+        }
+        updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+        if not updates:
+            return await self.get_hook(hook_id)
+
+        if "response_headers" in updates:
+            updates["response_headers"] = json.dumps(updates["response_headers"])
+
+        fields = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values())
+        values.append(hook_id)
+
+        await self.db.execute(f"UPDATE hooks SET {fields} WHERE id = ?", values)  # noqa: S608
+        await self.db.commit()
+        return await self.get_hook(hook_id)
 
     async def delete_hook(self, hook_id: str) -> None:
         """Delete a hook and all its requests.

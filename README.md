@@ -19,6 +19,10 @@ Self-hosted webhook inspector — catch, inspect, and debug webhooks in real-tim
 - **Real-time inspection** — WebSocket-powered live request streaming
 - **Any HTTP method** — GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD
 - **Full request details** — headers, body, query params, source IP
+- **Mock responses** — Configure custom status, body, and headers per hook
+- **Request replay** — Resend any captured request to a different URL
+- **Export** — Download hook + requests as JSON
+- **Copy as cURL** — One-click cURL command generation
 - **Auto-cleanup** — TTL-based request expiry (default 24h)
 - **Zero dependencies** — just SQLite, no Redis/Postgres needed
 - **Dark mode UI** — built-in web interface for inspecting requests
@@ -52,6 +56,28 @@ uv run python -m hookbox
 
 ---
 
+## Public URL with ngrok
+
+Hookbox runs on localhost by default. To receive webhooks from external services (Stripe, GitHub, Shopify, etc.), expose it with **ngrok**:
+
+```bash
+# 1. Install ngrok
+# https://ngrok.com/download
+
+# 2. Run Hookbox
+docker run -p 8080:8080 hookbox
+
+# 3. In another terminal, expose it
+ngrok http 8080
+
+# 4. Copy the https URL (e.g., https://abc123.ngrok.io)
+#    Use https://abc123.ngrok.io/hook/{hook_id} as your webhook URL
+```
+
+> **Security note:** ngrok creates a public tunnel to your local machine. Anyone with the URL can send requests. Use this only for development/testing, never for production data.
+
+---
+
 ## API
 
 ### Create a Hook
@@ -66,6 +92,19 @@ Response:
   "id": "a1b2c3d4e5f6",
   "url": "http://localhost:8080/hook/a1b2c3d4e5f6"
 }
+```
+
+### Configure Mock Response
+
+```bash
+curl -X PUT http://localhost:8080/hook/a1b2c3d4e5f6/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "response_status": 201,
+    "response_body": "{\"created\": true}",
+    "response_content_type": "application/json",
+    "response_headers": {"X-Custom": "value"}
+  }'
 ```
 
 ### Send Webhooks
@@ -89,6 +128,20 @@ curl http://localhost:8080/hook/a1b2c3d4e5f6/github/webhook
 curl http://localhost:8080/hook/a1b2c3d4e5f6
 ```
 
+### Replay a Request
+
+```bash
+curl -X POST http://localhost:8080/hook/a1b2c3d4e5f6/42/replay \
+  -H "Content-Type: application/json" \
+  -d '{"target_url": "http://localhost:3000/webhook"}'
+```
+
+### Export a Hook
+
+```bash
+curl -OJ http://localhost:8080/hook/a1b2c3d4e5f6/export
+```
+
 ### Delete a Hook
 
 ```bash
@@ -108,11 +161,15 @@ curl http://localhost:8080/health
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/hook` | Create a new hook |
+| GET | `/hook/{id}/meta` | Get hook metadata + response config |
+| PUT | `/hook/{id}/config` | Update hook response configuration |
 | POST | `/hook/{id}` | Catch a webhook (any HTTP method works) |
 | GET | `/hook/{id}` | List stored requests (paginated) |
 | DELETE | `/hook/{id}` | Delete a hook and its requests |
 | WS | `/hook/{id}/ws` | Real-time request stream |
 | DELETE | `/hook/{id}/{req}` | Delete a specific request |
+| POST | `/hook/{id}/{req}/replay` | Replay a request to a target URL |
+| GET | `/hook/{id}/export` | Export hook + requests as JSON file |
 | GET | `/health` | Service health check |
 
 ---
