@@ -7,6 +7,7 @@ import secrets
 from typing import TYPE_CHECKING, Any
 
 import aiosqlite
+import httpx
 
 from hookbox.adapters.database import RequestData  # noqa: TC001
 from hookbox.domain.models import HookCreateResponse
@@ -145,3 +146,62 @@ class HookService:
             NotFoundError: If request does not exist.
         """
         await self._db.delete_request(hook_id, request_id)
+
+    async def replay_request(
+        self, hook_id: str, request_id: int, target_url: str
+    ) -> dict[str, Any]:
+        """Replay a captured request to a target URL.
+
+        Args:
+            hook_id: Hook identifier.
+            request_id: Request ID to replay.
+            target_url: URL to send the replayed request to.
+
+        Returns:
+            Dictionary with status_code, headers, and body from target.
+
+        Raises:
+            NotFoundError: If hook or request does not exist.
+        """
+        req = await self._db.get_request(hook_id, request_id)
+        headers = {k: v for k, v in req["headers"].items() if k.lower() not in ("host", "content-length")}
+        body_bytes = req["body"].encode("utf-8") if req["body"] else None
+
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            response = await client.request(
+                req["method"],
+                target_url,
+                headers=headers,
+                content=body_bytes,
+            )
+
+        logger.info(
+            "Replayed request %d from hook %s to %s -> %d",
+            request_id,
+            hook_id,
+            target_url,
+            response.status_code,
+        )
+        return {
+            "status_code": response.status_code,
+            "headers": dict(response.headers),
+            "body": response.text,
+        }
+
+    async def export_requests(
+        self, hook_id: str
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """Export all data for a hook.
+
+        Args:
+            hook_id: Hook identifier.
+
+        Returns:
+            Tuple of (hook metadata, all requests).
+
+        Raises:
+            NotFoundError: If hook does not exist.
+        """
+        hook = await self._db.get_hook(hook_id)
+        requests = await self._db.get_all_requests(hook_id)
+        return hook, requests

@@ -66,6 +66,42 @@ class HookCreateResponse(BaseModel):
     url: str = Field(description="Full webhook URL")
 
 
+class ReplayRequest(BaseModel):
+    """Payload for replaying a captured request to a target URL.
+
+    Attributes:
+        target_url: The URL to replay the captured request to.
+    """
+
+    target_url: str = Field(description="Target URL to replay the request to")
+
+
+class ReplayResponse(BaseModel):
+    """Response from replaying a captured request.
+
+    Attributes:
+        status_code: HTTP status code from the target.
+        headers: Response headers from the target.
+        body: Response body from the target.
+    """
+
+    status_code: int = Field(description="HTTP status from target")
+    headers: dict[str, str] = Field(default_factory=dict, description="Response headers")
+    body: str = Field(default="", description="Response body")
+
+
+class ExportResponse(BaseModel):
+    """Full export of a hook and all its captured requests.
+
+    Attributes:
+        hook: Hook metadata.
+        requests: List of all captured requests.
+    """
+
+    hook: dict[str, Any] = Field(description="Hook metadata")
+    requests: list[dict[str, Any]] = Field(default_factory=list, description="All requests")
+
+
 class RequestListResponse(BaseModel):
     """Paginated list of webhook requests for a hook.
 

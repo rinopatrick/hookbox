@@ -165,14 +165,17 @@ function renderDetail(req) {
         `;
     } else if (tab === "body") {
         let body = req.body || "";
-        let formatted = body;
+        let isJson = false;
         try {
-            formatted = JSON.stringify(JSON.parse(body), null, 2);
+            const parsed = JSON.parse(body);
+            body = JSON.stringify(parsed, null, 2);
+            isJson = true;
         } catch {
             // not JSON, keep as-is
         }
+        const display = isJson ? syntaxHighlight(body) : escapeHtml(body);
         content = `
-            <pre class="font-mono p-3 rounded-lg" style="background: var(--bg-primary); color: var(--text-primary); max-height: 100%; overflow: auto">${escapeHtml(formatted)}</pre>
+            <pre class="font-mono p-3 rounded-lg" style="background: var(--bg-primary); color: var(--text-primary); max-height: 100%; overflow: auto">${display || '<span style="color: var(--text-secondary)">No body</span>'}</pre>
         `;
     } else if (tab === "query") {
         const qs = req.query_string || "";
@@ -241,6 +244,102 @@ function escapeHtml(str) {
     const div = document.createElement("div");
     div.textContent = str;
     return div.innerHTML;
+}
+
+function syntaxHighlight(json) {
+    if (typeof json !== "string") json = JSON.stringify(json, null, 2);
+    json = json.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return json.replace(
+        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+        function (match) {
+            let cls = "json-number";
+            if (/^"/.test(match)) {
+                if (/:$/.test(match)) cls = "json-key";
+                else cls = "json-string";
+            } else if (/true|false/.test(match)) {
+                cls = "json-boolean";
+            } else if (/null/.test(match)) {
+                cls = "json-null";
+            }
+            return `<span class="${cls}">${match}</span>`;
+        }
+    );
+}
+
+function copyAsCurl() {
+    const req = state.requests.find((r) => r.id === state.selectedRequestId);
+    if (!req) return;
+    const url = `${window.location.origin}/hook/${req.hook_id}${req.path}${req.query_string ? "?" + req.query_string : ""}`;
+    let cmd = `curl -X ${req.method}`;
+    for (const [k, v] of Object.entries(req.headers || {})) {
+        cmd += ` -H "${k}: ${v}"`;
+    }
+    if (req.body) {
+        cmd += ` -d '${req.body.replace(/'/g, "'\\''")}'`;
+    }
+    cmd += ` "${url}"`;
+    navigator.clipboard.writeText(cmd);
+    const btn = event.target;
+    const original = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(() => { btn.textContent = original; }, 1500);
+}
+
+async function replayRequest() {
+    const req = state.requests.find((r) => r.id === state.selectedRequestId);
+    if (!req) return;
+    const target = prompt("Target URL to replay to:", "http://localhost:3000/webhook");
+    if (!target) return;
+    try {
+        const resp = await fetch(`/hook/${state.hookId}/${req.id}/replay`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ target_url: target }),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            alert(`Replayed! Target responded with ${data.status_code}`);
+        } else {
+            alert(`Replay failed: ${data.error || resp.statusText}`);
+        }
+    } catch (err) {
+        alert(`Replay error: ${err.message}`);
+    }
+}
+
+async function exportHook() {
+    if (!state.hookId) return;
+    try {
+        const resp = await fetch(`/hook/${state.hookId}/export`);
+        if (!resp.ok) throw new Error(resp.statusText);
+        const blob = await resp.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `hookbox-${state.hookId}-export.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    } catch (err) {
+        console.error("Export failed:", err);
+    }
+}
+
+async function deleteSelectedRequest() {
+    const req = state.requests.find((r) => r.id === state.selectedRequestId);
+    if (!req) return;
+    if (!confirm("Delete this request?")) return;
+    try {
+        await fetch(`/hook/${state.hookId}/${req.id}`, { method: "DELETE" });
+        state.requests = state.requests.filter((r) => r.id !== req.id);
+        state.selectedRequestId = null;
+        renderRequestList();
+        $("#requestDetail").innerHTML = `<div class="flex items-center justify-center h-full" style="color: var(--text-secondary)"><span class="text-sm">Select a request to inspect</span></div>`;
+        updateRequestCount();
+    } catch (err) {
+        console.error("Failed to delete request:", err);
+    }
 }
 
 document.addEventListener("DOMContentLoaded", init);

@@ -262,6 +262,26 @@ class Database:
             raise NotFoundError(msg)
         return self._row_to_dict(row)
 
+    async def get_all_requests(self, hook_id: str) -> list[dict[str, Any]]:
+        """Retrieve all requests for a hook (no pagination).
+
+        Args:
+            hook_id: Hook identifier.
+
+        Returns:
+            List of all request dictionaries.
+        """
+        cursor = await self.db.execute(
+            """SELECT id, hook_id, method, path, query_string, headers, body,
+                      content_type, source_ip, received_at
+               FROM webhook_requests
+               WHERE hook_id = ?
+               ORDER BY received_at DESC""",
+            (hook_id,),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_dict(row) for row in rows]
+
     async def delete_request(self, hook_id: str, request_id: int) -> None:
         """Delete a single request.
 

@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from hookbox.adapters.database import Database, RequestData
 from hookbox.api.websocket import manager as ws_manager, websocket_endpoint
 from hookbox.config import Settings
+from hookbox.domain.models import ReplayRequest, ReplayResponse  # noqa: TC001
 from hookbox.exceptions import HookboxError, NotFoundError
 from hookbox.logging import get_logger, setup_logging
 from hookbox.services.cleanup import cleanup_task
@@ -144,6 +145,30 @@ async def delete_request(hook_id: str, request_id: int) -> dict[str, str]:
     """Delete a specific request from a hook."""
     await hook_service.delete_request(hook_id, request_id)
     return {"status": "deleted"}
+
+
+@app.post("/hook/{hook_id}/{request_id}/replay")
+async def replay_request(hook_id: str, request_id: int, payload: ReplayRequest) -> ReplayResponse:
+    """Replay a captured request to a target URL."""
+    result = await hook_service.replay_request(hook_id, request_id, payload.target_url)
+    return ReplayResponse(
+        status_code=result["status_code"],
+        headers=result["headers"],
+        body=result["body"],
+    )
+
+
+@app.get("/hook/{hook_id}/export")
+async def export_hook(hook_id: str) -> Response:
+    """Export a hook and all its captured requests as a downloadable JSON file."""
+    hook, requests = await hook_service.export_requests(hook_id)
+    data = {"hook": hook, "requests": requests}
+    return JSONResponse(
+        content=data,
+        headers={
+            "Content-Disposition": f'attachment; filename="hookbox-{hook_id}-export.json"'
+        },
+    )
 
 
 # ── Webhook Catch-All ────────────────────────────────────────────────
