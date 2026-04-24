@@ -2,27 +2,13 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 import pytest
-import pytest_asyncio
 
 from hookbox.adapters.database import Database, RequestData
-from hookbox.exceptions import NotFoundError
 from hookbox.config import Settings
-
-
-@pytest_asyncio.fixture
-async def db() -> Database:
-    """Create an in-memory test database."""
-    test_settings = Settings(
-        database_url="sqlite+aiosqlite:///:memory:",
-        request_ttl_hours=24,
-        cleanup_interval_seconds=3600,
-        max_body_size=1024,
-    )
-    database = Database(test_settings)
-    await database.connect()
-    yield database
-    await database.close()
+from hookbox.exceptions import NotFoundError
 
 
 @pytest.mark.asyncio
@@ -152,8 +138,6 @@ async def test_cleanup_expired(db: Database) -> None:
         source_ip="",
     )
     await short_db.store_request(request_data)
-
-    import datetime as dt
 
     old_time = (dt.datetime.now() - dt.timedelta(hours=2)).isoformat()
     await short_db.db.execute(

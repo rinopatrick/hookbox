@@ -9,8 +9,9 @@ services:
       - HOOKBOX_DATABASE_URL=sqlite+aiosqlite:////app/data/hookbox.db
       - HOOKBOX_REQUEST_TTL_HOURS=24
       - HOOKBOX_CLEANUP_INTERVAL_SECONDS=300
+      # - HOOKBOX_CORS_ORIGINS=https://example.com,http://localhost:3000
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -50,9 +50,28 @@ class Settings(BaseSettings):
         description="Maximum stored request body size in bytes (default 1MB)",
         ge=1024,
     )
+    cors_origins: str = Field(
+        default="",
+        description="Comma-separated allowed CORS origins (e.g. https://example.com,http://localhost:3000)",
+    )
 
     @property
     def db_path(self) -> Path:
         """Extract filesystem path from database_url."""
-        raw = self.database_url.split("///")[-1]
+        raw = self.database_url
+        if raw.startswith("sqlite+aiosqlite://"):
+            raw = raw[len("sqlite+aiosqlite://") :]
+        # After the scheme, sqlite URLs have:
+        #   /path      → relative path (strip leading /)
+        #   //path     → absolute path (strip one /)
+        #   /:memory:  → in-memory DB (strip leading /)
+        if raw.startswith("//"):
+            raw = raw[1:]  # keep one slash for absolute path
+        elif raw.startswith("/"):
+            raw = raw[1:]  # relative path or :memory:
         return Path(raw)
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Parse comma-separated CORS origins into a list."""
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

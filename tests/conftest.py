@@ -2,27 +2,20 @@
 
 from __future__ import annotations
 
-import asyncio
-from typing import AsyncGenerator
+from typing import TYPE_CHECKING
 
-import pytest
 import pytest_asyncio
 
 from hookbox.adapters.database import Database
 from hookbox.config import Settings
 from hookbox.services.hook_service import HookService
 
-
-@pytest.fixture(scope="session")
-def event_loop() -> asyncio.AbstractEventLoop:
-    """Create a session-scoped event loop for async tests."""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 
 @pytest_asyncio.fixture
-async def db() -> AsyncGenerator[Database, None]:
+async def db() -> AsyncGenerator[Database]:
     """Create a temporary in-memory database for testing."""
     test_settings = Settings(
         database_url="sqlite+aiosqlite:///:memory:",

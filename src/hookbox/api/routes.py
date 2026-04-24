@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncGenerator  # noqa: TC003
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Query, Request, Response, WebSocket  # noqa: TC002
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -39,6 +40,8 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     logger.info("Hookbox started on %s:%d", settings.host, settings.port)
     yield
     cleanup.cancel()
+    with suppress(asyncio.CancelledError):
+        await cleanup
     await db.close()
     logger.info("Hookbox shut down")
 
@@ -50,11 +53,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+if settings.cors_origins_list:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 
 @app.exception_handler(HookboxError)
 async def hookbox_error_handler(_request: Request, exc: HookboxError) -> JSONResponse:
     """Handle application-specific errors."""
     status = 404 if isinstance(exc, NotFoundError) else 400
+    logger.warning("Hookbox error (%d): %s", status, exc)
     return JSONResponse(status_code=status, content={"error": str(exc)})
 
 
@@ -63,6 +76,7 @@ async def validation_error_handler(
     _request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     """Handle request validation errors."""
+    logger.warning("Validation error: %s", exc)
     return JSONResponse(
         status_code=422, content={"error": "Validation failed", "details": str(exc)}
     )
@@ -90,10 +104,15 @@ async def create_hook(name: str | None = Query(default=None)) -> dict[str, Any]:
 # ── WebSocket (must be registered before catch-all) ──────────────────
 
 
+async def _validate_hook(hook_id: str) -> None:
+    """Validate that a hook exists before allowing WebSocket connection."""
+    await hook_service.get_hook(hook_id)
+
+
 @app.websocket("/hook/{hook_id}/ws")
 async def ws_hook(websocket: WebSocket, hook_id: str) -> None:
     """WebSocket endpoint for real-time webhook inspection."""
-    await websocket_endpoint(websocket, hook_id)
+    await websocket_endpoint(websocket, hook_id, validate=_validate_hook)
 
 
 # ── Hook-specific operations (before catch-all) ──────────────────────
@@ -120,6 +139,13 @@ async def delete_hook(hook_id: str) -> dict[str, str]:
     return {"status": "deleted"}
 
 
+@app.delete("/hook/{hook_id}/{request_id}")
+async def delete_request(hook_id: str, request_id: int) -> dict[str, str]:
+    """Delete a specific request from a hook."""
+    await hook_service.delete_request(hook_id, request_id)
+    return {"status": "deleted"}
+
+
 # ── Webhook Catch-All ────────────────────────────────────────────────
 
 CATCH_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
@@ -141,7 +167,13 @@ async def catch_webhook(request: Request, hook_id: str) -> Response:
 
 async def _capture_and_broadcast(request: Request, hook_id: str, path: str) -> Response:
     """Capture request details, store, and broadcast to WebSocket clients."""
-    body_bytes = await request.body()
+    body_bytes, was_truncated = await _read_body_limited(request, settings.max_body_size)
+    if was_truncated:
+        logger.warning(
+            "Request body truncated for hook %s (max %d bytes)",
+            hook_id,
+            settings.max_body_size,
+        )
     body_str = body_bytes.decode("utf-8", errors="replace")
 
     headers = {k: v for k, v in request.headers.items() if k.lower() not in ("host",)}
@@ -163,6 +195,20 @@ async def _capture_and_broadcast(request: Request, hook_id: str, path: str) -> R
     await ws_manager.broadcast(hook_id, event)
 
     return Response(status_code=200, content="ok")
+
+
+async def _read_body_limited(request: Request, max_size: int) -> tuple[bytes, bool]:
+    """Read request body up to max_size bytes to prevent memory exhaustion."""
+    body_parts: list[bytes] = []
+    total = 0
+    truncated = False
+    async for chunk in request.stream():
+        body_parts.append(chunk)
+        total += len(chunk)
+        if total >= max_size:
+            truncated = True
+            break
+    return b"".join(body_parts)[:max_size], truncated
 
 
 # ── Static Frontend (must be last mount) ─────────────────────────────

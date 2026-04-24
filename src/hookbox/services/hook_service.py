@@ -6,6 +6,8 @@ import logging
 import secrets
 from typing import TYPE_CHECKING, Any
 
+import aiosqlite
+
 from hookbox.adapters.database import RequestData  # noqa: TC001
 from hookbox.domain.models import HookCreateResponse
 
@@ -40,8 +42,16 @@ class HookService:
         Returns:
             HookCreateResponse with the generated ID and full URL.
         """
-        hook_id = generate_hook_id()
-        await self._db.create_hook(hook_id, name)
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            hook_id = generate_hook_id()
+            try:
+                await self._db.create_hook(hook_id, name)
+                break
+            except aiosqlite.IntegrityError:
+                if attempt == max_attempts:
+                    raise
+                logger.warning("Hook ID collision, retrying (%d/%d)", attempt, max_attempts)
         url = f"{self._base_url}/hook/{hook_id}"
         logger.info("Created hook %s at %s", hook_id, url)
         return HookCreateResponse(id=hook_id, url=url)

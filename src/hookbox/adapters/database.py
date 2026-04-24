@@ -73,6 +73,8 @@ class Database:
 
     async def connect(self) -> None:
         """Open database connection and initialize schema."""
+        if self._db is not None:
+            await self.close()
         self._db = await aiosqlite.connect(self._db_path)
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.execute("PRAGMA foreign_keys=ON")
@@ -145,10 +147,7 @@ class Database:
         Raises:
             NotFoundError: If hook does not exist.
         """
-        existing = await self.get_hook(hook_id)
-        if existing is None:
-            msg = f"Hook '{hook_id}' not found"
-            raise NotFoundError(msg)
+        await self.get_hook(hook_id)
         await self.db.execute(
             "DELETE FROM webhook_requests WHERE hook_id = ?", (hook_id,)
         )

@@ -47,6 +47,9 @@ function loadHook(hookId) {
     fetchRequests(hookId);
 }
 
+let reconnectAttempts = 0;
+const MAX_RECONNECT_DELAY = 30000;
+
 function connectWs(hookId) {
     if (state.ws) {
         state.ws.close();
@@ -58,6 +61,7 @@ function connectWs(hookId) {
     state.ws = new WebSocket(wsUrl);
 
     state.ws.onopen = () => {
+        reconnectAttempts = 0;
         $("#wsStatus").textContent = "Live";
         $("#wsIndicator").style.background = "var(--accent)";
     };
@@ -65,7 +69,9 @@ function connectWs(hookId) {
     state.ws.onclose = () => {
         $("#wsStatus").textContent = "Disconnected";
         $("#wsIndicator").style.background = "var(--method-delete)";
-        setTimeout(() => connectWs(hookId), 3000);
+        const delay = Math.min(3000 * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY);
+        reconnectAttempts++;
+        setTimeout(() => connectWs(hookId), delay);
     };
 
     state.ws.onmessage = (event) => {

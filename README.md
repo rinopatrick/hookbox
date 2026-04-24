@@ -2,6 +2,8 @@
 
 Self-hosted webhook inspector — catch, inspect, and debug webhooks in real-time. The free, open-source alternative to webhook.site and RequestBin.
 
+> **Self-hosted by design.** Hookbox runs on your own machine. It is NOT a public SaaS. There is no auth, no rate limiting, and no multi-user isolation — because it is intended to run locally or behind your own firewall.
+
 ## Features
 
 - **One command deploy** — `docker run hookbox` and you're running
@@ -111,12 +113,13 @@ All settings are configurable via environment variables with the `HOOKBOX_` pref
 | `HOOKBOX_REQUEST_TTL_HOURS` | `24` | Hours before requests auto-delete |
 | `HOOKBOX_CLEANUP_INTERVAL_SECONDS` | `300` | Background cleanup interval |
 | `HOOKBOX_MAX_BODY_SIZE` | `1048576` | Max stored body size in bytes (1MB) |
+| `HOOKBOX_CORS_ORIGINS` | `` | Comma-separated allowed CORS origins |
 
 ## Tech Stack
 
 - **Backend:** Python 3.13 + FastAPI + WebSocket + SQLite (aiosqlite)
 - **Frontend:** Vanilla JS + Tailwind CSS
-- **Docker:** Multi-stage build (distroless runtime)
+- **Docker:** Multi-stage build (slim runtime)
 - **Testing:** pytest + pytest-asyncio + httpx
 
 ## License

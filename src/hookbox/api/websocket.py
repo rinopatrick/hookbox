@@ -71,13 +71,22 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-async def websocket_endpoint(websocket: WebSocket, hook_id: str) -> None:
+async def websocket_endpoint(
+    websocket: WebSocket, hook_id: str, validate: Any | None = None
+) -> None:
     """Handle a WebSocket connection for real-time webhook inspection.
 
     Args:
         websocket: The incoming WebSocket connection.
         hook_id: Hook identifier to subscribe to.
+        validate: Optional async callable to validate hook_id before accepting.
     """
+    if validate is not None:
+        try:
+            await validate(hook_id)
+        except Exception:
+            await websocket.close(code=1008)
+            return
     await websocket.accept()
     manager.connect(hook_id, websocket)
     try:

@@ -6,9 +6,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from hookbox.adapters.database import Database
-from hookbox.api.routes import app, db as app_db, hook_service, settings
-from hookbox.services.hook_service import HookService
+from hookbox.api.routes import app, db as app_db
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -17,7 +15,7 @@ async def setup_db() -> None:
     if app_db._db is None:
         await app_db.connect()
     yield
-    await app_db.cleanup_expired()
+    await app_db.close()
 
 
 @pytest_asyncio.fixture
@@ -121,6 +119,28 @@ async def test_delete_request(client: AsyncClient) -> None:
 
     resp = await client.delete(f"/hook/{hook_id}/{request_id}")
     assert resp.status_code == 200
+    assert resp.json()["status"] == "deleted"
+
+    # Verify request is actually gone
+    list_resp2 = await client.get(f"/hook/{hook_id}")
+    assert list_resp2.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_nonexistent_request(client: AsyncClient) -> None:
+    """Deleting a non-existent request returns 404."""
+    create_resp = await client.post("/hook")
+    hook_id = create_resp.json()["id"]
+
+    resp = await client.delete(f"/hook/{hook_id}/99999")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_request_invalid_hook(client: AsyncClient) -> None:
+    """Deleting a request from a non-existent hook returns 404."""
+    resp = await client.delete("/hook/nonexistent123/1")
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
